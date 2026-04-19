@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 async function getFeaturedProjects(): Promise<Project[]> {
   try {
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/projects?limit=3`,
+      `${process.env.NEXT_PUBLIC_API_URL}/projects?limit=3`,
       { next: { revalidate: 60 } }
     );
     if (!res.ok) return [];
@@ -37,7 +37,8 @@ const skills = [
   { name: 'Laravel', category: 'Backend', icon: Server },
   { name: 'React / Next.js', category: 'Frontend', icon: Code2 },
   { name: 'PHP', category: 'Backend', icon: Server },
-  { name: 'MySQL', category: 'Database', icon: Database },
+  { name: 'MySQL',      category: 'Database', icon: Database },
+  { name: 'PostgreSQL', category: 'Database', icon: Database },
   { name: 'REST API', category: 'Backend', icon: Layers },
   { name: 'Tailwind CSS', category: 'Frontend', icon: Code2 },
   { name: 'JWT Auth', category: 'Security', icon: Layers },
