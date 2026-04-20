@@ -135,7 +135,7 @@ export default async function HomePage() {
               </h2>
               <p className="text-stone-400 leading-relaxed mb-4">
                 I'm a full-stack developer passionate about building powerful API-driven applications.
-                My expertise spans across Laravel, React, MySQL, and modern DevOps practices.
+                My expertise spans across Laravel, React, PostgreSQL, and modern DevOps practices.
               </p>
               <p className="text-stone-400 leading-relaxed mb-8">
                 I focus on clean architecture, code maintainability, and creating great user experiences —
