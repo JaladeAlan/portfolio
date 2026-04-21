@@ -18,6 +18,17 @@
   --color-accent-light: #fbbf24;
 }
 
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.03) inset !important;
+  box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.03) inset !important;
+  -webkit-text-fill-color: #fff !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 * {
   box-sizing: border-box;
 }

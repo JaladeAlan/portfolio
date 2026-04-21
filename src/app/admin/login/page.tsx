@@ -81,7 +81,7 @@ export default function AdminLoginPage() {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="admin@example.com"
-                className="w-full px-4 py-3 rounded-xl bg-white/3 border border-white/8 text-white placeholder-stone-700 focus:outline-none focus:border-amber-600/50 focus:bg-white/5 transition-all text-sm"
+                className="w-full px-4 py-3 rounded-xl bg-stone-900/80 border border-white/8 text-white placeholder-stone-700 focus:outline-none focus:border-amber-600/50 focus:bg-stone-900 transition-all text-sm"
               />
             </div>
 
@@ -98,7 +98,7 @@ export default function AdminLoginPage() {
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   placeholder="••••••••"
-                  className="w-full px-4 py-3 rounded-xl bg-white/3 border border-white/8 text-white placeholder-stone-700 focus:outline-none focus:border-amber-600/50 focus:bg-white/5 transition-all text-sm pr-11"
+                  className="w-full px-4 py-3 rounded-xl bg-stone-900/80 border border-white/8 text-white placeholder-stone-700 focus:outline-none focus:border-amber-600/50 focus:bg-stone-900 transition-all text-sm pr-11"
                 />
                 <button
                   type="button"
