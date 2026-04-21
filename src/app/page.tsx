@@ -82,7 +82,7 @@ export default async function HomePage() {
           </div>
 
           <h1 className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black leading-[0.95] mb-6 animate-fade-up">
-            <span className="block text-white">Hello, I'm</span>
+            <span className="block text-white">Hi, I'm</span>
             <span className="block text-shimmer mt-1">{ownerName}</span>
           </h1>
 
