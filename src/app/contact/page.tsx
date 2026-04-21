@@ -1,9 +1,8 @@
 'use client';
 
-import type { Metadata } from 'next';
 import { useState } from 'react';
 import { Send, Mail, Github, Linkedin, CheckCircle, AlertCircle } from 'lucide-react';
-import api from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: '', email: '', message: '' });
@@ -29,13 +28,18 @@ export default function ContactPage() {
     setStatus({ type: '', message: '' });
 
     try {
-      await api.post('/contact', form);
-      setStatus({ type: 'success', message: 'Your message was sent! I\'ll be in touch soon.' });
+      const { error } = await supabase
+        .from('messages')
+        .insert([{ name: form.name, email: form.email, message: form.message }]);
+
+      if (error) throw error;
+
+      setStatus({ type: 'success', message: "Your message was sent! I'll be in touch soon." });
       setForm({ name: '', email: '', message: '' });
     } catch (err: any) {
       setStatus({
         type: 'error',
-        message: err?.response?.data?.message || 'Something went wrong. Please try again.',
+        message: err?.message || 'Something went wrong. Please try again.',
       });
     } finally {
       setLoading(false);
@@ -44,7 +48,6 @@ export default function ContactPage() {
 
   return (
     <>
-      {/* Header */}
       <section className="pt-32 pb-16 px-6 border-b border-white/5">
         <div className="max-w-5xl mx-auto">
           <p className="text-amber-500 font-mono text-xs uppercase tracking-widest mb-4">Contact</p>
@@ -57,10 +60,8 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* Content */}
       <section className="py-16 px-6">
         <div className="max-w-5xl mx-auto grid md:grid-cols-5 gap-12 lg:gap-16">
-          {/* Form */}
           <div className="md:col-span-3">
             {status.type === 'success' ? (
               <div className="p-8 rounded-2xl border border-green-600/20 bg-green-900/10 text-center">
@@ -85,9 +86,7 @@ export default function ContactPage() {
 
                 <div className="grid sm:grid-cols-2 gap-5">
                   <div>
-                    <label htmlFor="name" className="block text-stone-400 text-sm font-medium mb-2">
-                      Name
-                    </label>
+                    <label htmlFor="name" className="block text-stone-400 text-sm font-medium mb-2">Name</label>
                     <input
                       id="name"
                       type="text"
@@ -100,9 +99,7 @@ export default function ContactPage() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="email" className="block text-stone-400 text-sm font-medium mb-2">
-                      Email
-                    </label>
+                    <label htmlFor="email" className="block text-stone-400 text-sm font-medium mb-2">Email</label>
                     <input
                       id="email"
                       type="email"
@@ -117,9 +114,7 @@ export default function ContactPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="message" className="block text-stone-400 text-sm font-medium mb-2">
-                    Message
-                  </label>
+                  <label htmlFor="message" className="block text-stone-400 text-sm font-medium mb-2">Message</label>
                   <textarea
                     id="message"
                     rows={6}
@@ -152,12 +147,9 @@ export default function ContactPage() {
             )}
           </div>
 
-          {/* Sidebar */}
           <aside className="md:col-span-2 space-y-6">
             <div>
-              <h2 className="font-display text-xl font-bold text-white mb-2">
-                Other ways to reach me
-              </h2>
+              <h2 className="font-display text-xl font-bold text-white mb-2">Other ways to reach me</h2>
               <p className="text-stone-500 text-sm leading-relaxed">
                 Prefer a different channel? Find me on any of these platforms.
               </p>

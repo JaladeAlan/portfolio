@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, Github, ExternalLink, Code2, Server, Database, Layers } from 'lucide-react';
-import { Project } from '@/types';
+import { createClient } from '@supabase/supabase-js';
+import type { Project } from '@/lib/supabase';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://jaladedev.com';
 const ownerName = process.env.NEXT_PUBLIC_OWNER_NAME || 'Joseph Alalade';
@@ -19,15 +20,26 @@ export const metadata: Metadata = {
   },
 };
 
+// Server-side Supabase client (uses anon key — RLS handles access)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
 async function getFeaturedProjects(): Promise<Project[]> {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/projects?limit=3`,
-      { next: { revalidate: 60 } }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data.slice(0, 3) : [];
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(3);
+
+    if (error || !data) return [];
+    return data;
   } catch {
     return [];
   }
@@ -37,7 +49,7 @@ const skills = [
   { name: 'Laravel', category: 'Backend', icon: Server },
   { name: 'React / Next.js', category: 'Frontend', icon: Code2 },
   { name: 'PHP', category: 'Backend', icon: Server },
-  { name: 'MySQL',      category: 'Database', icon: Database },
+  { name: 'MySQL', category: 'Database', icon: Database },
   { name: 'PostgreSQL', category: 'Database', icon: Database },
   { name: 'REST API', category: 'Backend', icon: Layers },
   { name: 'Tailwind CSS', category: 'Frontend', icon: Code2 },
@@ -52,7 +64,6 @@ export default async function HomePage() {
     <>
       {/* ─── HERO ─────────────────────────────────────── */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-        {/* Background layers */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(217,119,6,0.12),transparent)]" />
         <div
           className="absolute inset-0 opacity-[0.03]"
@@ -63,7 +74,6 @@ export default async function HomePage() {
         />
 
         <div className="relative max-w-5xl mx-auto px-6 pt-28 pb-20 text-center">
-          {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-amber-600/30 bg-amber-600/10 mb-8 animate-fade-in">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse-slow" />
             <span className="text-amber-400 text-xs font-mono tracking-wide uppercase">
@@ -71,7 +81,6 @@ export default async function HomePage() {
             </span>
           </div>
 
-          {/* Heading */}
           <h1 className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black leading-[0.95] mb-6 animate-fade-up">
             <span className="block text-white">Hello, I'm</span>
             <span className="block text-shimmer mt-1">{ownerName}</span>
@@ -83,7 +92,6 @@ export default async function HomePage() {
             <span className="text-stone-200 font-medium">modern web apps</span> with Laravel & React.
           </p>
 
-          {/* Stack tags */}
           <div className="flex flex-wrap justify-center gap-2 mb-10 animate-fade-up animate-delay-300">
             {['Laravel', 'React', 'Next.js', 'PHP', 'MySQL'].map((tag) => (
               <span
@@ -95,7 +103,6 @@ export default async function HomePage() {
             ))}
           </div>
 
-          {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up animate-delay-400">
             <Link
               href="/projects"
@@ -112,7 +119,6 @@ export default async function HomePage() {
             </Link>
           </div>
 
-          {/* Scroll indicator */}
           <div className="mt-20 flex justify-center animate-fade-in animate-delay-600">
             <div className="flex flex-col items-center gap-2 text-stone-600">
               <div className="w-px h-12 bg-gradient-to-b from-transparent to-stone-600" />
@@ -126,7 +132,6 @@ export default async function HomePage() {
       <section id="about" className="py-24 px-6">
         <div className="max-w-5xl mx-auto">
           <div className="grid md:grid-cols-2 gap-16 items-center">
-            {/* Text */}
             <div>
               <p className="text-amber-500 font-mono text-xs uppercase tracking-widest mb-3">About</p>
               <h2 className="font-display text-3xl sm:text-4xl font-bold text-white mb-6 leading-tight">
@@ -150,7 +155,6 @@ export default async function HomePage() {
               </Link>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-2 gap-4">
               {[
                 { label: 'Stack', value: 'Laravel + React', sub: 'Primary expertise' },
@@ -179,9 +183,7 @@ export default async function HomePage() {
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-amber-500 font-mono text-xs uppercase tracking-widest mb-3">Skills</p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-white">
-              Tech Stack
-            </h2>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-white">Tech Stack</h2>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -238,10 +240,7 @@ export default async function HomePage() {
           )}
 
           <div className="mt-10 sm:hidden text-center">
-            <Link
-              href="/projects"
-              className="text-stone-500 hover:text-amber-400 text-sm transition-colors"
-            >
+            <Link href="/projects" className="text-stone-500 hover:text-amber-400 text-sm transition-colors">
               View all projects →
             </Link>
           </div>
@@ -254,9 +253,7 @@ export default async function HomePage() {
           <div className="p-10 sm:p-16 rounded-2xl border border-white/5 bg-gradient-to-b from-white/3 to-transparent relative overflow-hidden">
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(217,119,6,0.07),transparent_70%)]" />
             <div className="relative">
-              <p className="text-amber-500 font-mono text-xs uppercase tracking-widest mb-4">
-                Let's Build
-              </p>
+              <p className="text-amber-500 font-mono text-xs uppercase tracking-widest mb-4">Let's Build</p>
               <h2 className="font-display text-3xl sm:text-5xl font-bold text-white mb-5 leading-tight">
                 Have a project in mind?
               </h2>
@@ -280,18 +277,15 @@ export default async function HomePage() {
 }
 
 function ProjectCard({ project }: { project: Project }) {
-  const imageUrl = project.image_url || null;
-
   return (
     <Link
       href={`/projects/${project.id}`}
       className="group flex flex-col rounded-xl border border-white/5 bg-white/2 overflow-hidden hover:border-amber-600/25 transition-all duration-300 card-hover"
     >
-      {/* Image */}
       <div className="relative h-44 bg-stone-900 overflow-hidden">
-        {imageUrl ? (
+        {project.image_url ? (
           <Image
-            src={imageUrl}
+            src={project.image_url}
             alt={project.title}
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-500"
@@ -305,7 +299,6 @@ function ProjectCard({ project }: { project: Project }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
 
-      {/* Content */}
       <div className="p-5 flex flex-col flex-1">
         {project.stack && (
           <p className="text-amber-600 font-mono text-xs mb-2 truncate">{project.stack}</p>
@@ -317,7 +310,6 @@ function ProjectCard({ project }: { project: Project }) {
           {project.summary}
         </p>
 
-        {/* Links */}
         <div className="flex items-center gap-3 mt-4 pt-4 border-t border-white/5">
           {project.github && (
             <a
@@ -326,10 +318,8 @@ function ProjectCard({ project }: { project: Project }) {
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               className="flex items-center gap-1 text-stone-500 hover:text-white text-xs transition-colors"
-              aria-label="View on GitHub"
             >
-              <Github size={13} />
-              Code
+              <Github size={13} /> Code
             </a>
           )}
           {project.website && (
@@ -339,10 +329,8 @@ function ProjectCard({ project }: { project: Project }) {
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               className="flex items-center gap-1 text-stone-500 hover:text-white text-xs transition-colors"
-              aria-label="View live site"
             >
-              <ExternalLink size={13} />
-              Live
+              <ExternalLink size={13} /> Live
             </a>
           )}
           <span className="ml-auto text-xs text-amber-600 group-hover:text-amber-400 transition-colors font-medium">

@@ -3,24 +3,32 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Github, ExternalLink, Code2, Calendar, Layers } from 'lucide-react';
-import { Project } from '@/types';
+import { createClient } from '@supabase/supabase-js';
+import type { Project } from '@/lib/supabase';
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 async function getProject(id: string): Promise<Project | null> {
   try {
-    const res = await fetch(`${apiBase}/projects/${id}`, {
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.project || data;
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) return null;
+    return data;
   } catch {
     return null;
   }
 }
 
-// Dynamic OG metadata per project
 export async function generateMetadata({
   params,
 }: {
@@ -31,15 +39,15 @@ export async function generateMetadata({
 
   return {
     title: project.title,
-    description: project.summary,
+    description: project.summary ?? undefined,
     openGraph: {
       title: `${project.title} | JaladeDev`,
-      description: project.summary,
+      description: project.summary ?? undefined,
       images: project.image_url ? [{ url: project.image_url }] : [],
     },
     twitter: {
       title: `${project.title} | JaladeDev`,
-      description: project.summary,
+      description: project.summary ?? undefined,
       images: project.image_url ? [project.image_url] : [],
     },
   };
@@ -60,9 +68,14 @@ export default async function ProjectDetailPage({
       })
     : null;
 
+  // Prefer stack_tags array; fall back to comma-split of stack string
+  const stackTags: string[] =
+    project.stack_tags?.length
+      ? project.stack_tags
+      : project.stack?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+
   return (
     <>
-      {/* Back button */}
       <div className="pt-24 pb-4 px-6 max-w-4xl mx-auto">
         <Link
           href="/projects"
@@ -73,7 +86,6 @@ export default async function ProjectDetailPage({
         </Link>
       </div>
 
-      {/* Hero image */}
       {project.image_url && (
         <div className="relative h-64 sm:h-80 md:h-96 max-w-4xl mx-auto px-6 mb-10">
           <div className="relative h-full rounded-2xl overflow-hidden border border-white/8">
@@ -92,7 +104,6 @@ export default async function ProjectDetailPage({
 
       <article className="max-w-4xl mx-auto px-6 pb-24">
         <div className="grid md:grid-cols-3 gap-10">
-          {/* Main content */}
           <div className="md:col-span-2">
             <h1 className="font-display text-3xl sm:text-5xl font-black text-white mb-4 leading-tight">
               {project.title}
@@ -114,29 +125,26 @@ export default async function ProjectDetailPage({
             )}
           </div>
 
-          {/* Sidebar */}
           <aside className="space-y-6">
-            {/* Stack */}
-            {project.stack && (
+            {stackTags.length > 0 && (
               <div className="p-5 rounded-xl border border-white/5 bg-white/2">
                 <div className="flex items-center gap-2 mb-3">
                   <Layers size={14} className="text-amber-500" />
                   <p className="text-stone-400 text-xs uppercase tracking-widest font-mono">Stack</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {project.stack.split(',').map((s) => (
+                  {stackTags.map((s) => (
                     <span
                       key={s}
                       className="px-2.5 py-1 rounded-full text-xs font-mono border border-amber-600/20 text-amber-500 bg-amber-600/5"
                     >
-                      {s.trim()}
+                      {s}
                     </span>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Date */}
             {formattedDate && (
               <div className="p-5 rounded-xl border border-white/5 bg-white/2">
                 <div className="flex items-center gap-2 mb-2">
@@ -147,7 +155,6 @@ export default async function ProjectDetailPage({
               </div>
             )}
 
-            {/* Links */}
             <div className="space-y-3">
               {project.github && (
                 <a
@@ -177,7 +184,6 @@ export default async function ProjectDetailPage({
           </aside>
         </div>
 
-        {/* Bottom nav */}
         <div className="mt-16 pt-8 border-t border-white/5 flex items-center justify-between">
           <Link
             href="/projects"

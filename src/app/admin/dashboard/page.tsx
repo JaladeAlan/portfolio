@@ -3,14 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  LogOut, Plus, Edit, Trash2, X, Save, Upload, Eye, EyeOff,
-  FolderOpen, Wrench, MessageSquare, ChevronDown, ChevronUp, LayoutDashboard
+  LogOut, Plus, Edit, Trash2, X, Save, Upload, Eye,
+  FolderOpen, Wrench, MessageSquare, ChevronDown, ChevronUp, LayoutDashboard,
+  FileQuestion,
 } from 'lucide-react';
-import api from '@/lib/api';
-import { Project, Skill, ContactMessage, Admin } from '@/types';
+import { supabase } from '@/lib/supabase';
+import type { Project, Skill, Message, Quote } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type Tab = 'projects' | 'skills' | 'messages';
+type Tab = 'projects' | 'skills' | 'messages' | 'quotes';
 
 interface ProjectForm {
   title: string;
@@ -19,61 +20,77 @@ interface ProjectForm {
   stack: string;
   github: string;
   website: string;
+  featured: boolean;
+  sort_order: number;
   image: File | null;
 }
 
 interface SkillForm {
   name: string;
   category: string;
-  level: number;
+  sort_order: number;
 }
 
 const emptyProject: ProjectForm = {
-  title: '', summary: '', description: '', stack: '', github: '', website: '', image: null,
+  title: '', summary: '', description: '', stack: '', github: '', website: '',
+  featured: false, sort_order: 0, image: null,
 };
 
-const emptySkill: SkillForm = { name: '', category: '', level: 80 };
+const emptySkill: SkillForm = { name: '', category: '', sort_order: 0 };
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+const inputCls = "w-full px-3.5 py-2.5 rounded-xl bg-white/3 border border-white/8 text-white placeholder-stone-700 focus:outline-none focus:border-amber-600/50 focus:bg-white/5 transition-all text-sm";
+
 export default function AdminDashboard() {
   const router = useRouter();
-  const [admin, setAdmin] = useState<Admin | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('projects');
   const [loading, setLoading] = useState(true);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [messages, setMessages] = useState<ContactMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
 
-  // Modal states
   const [projectModal, setProjectModal] = useState<{ open: boolean; editing: Project | null }>({ open: false, editing: null });
   const [skillModal, setSkillModal] = useState<{ open: boolean; editing: Skill | null }>({ open: false, editing: null });
-  const [deleteModal, setDeleteModal] = useState<{ open: boolean; type: 'project' | 'skill'; id: number } | null>(null);
-
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; type: 'project' | 'skill'; id: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
   // ─── Auth check ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) { router.replace('/admin/login'); return; }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        router.replace('/admin/login');
+      } else {
+        setUser(session.user);
+      }
+    });
 
-    api.get('/auth/me')
-      .then((res) => setAdmin(res.data?.data || res.data))
-      .catch(() => { localStorage.removeItem('token'); router.replace('/admin/login'); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        router.replace('/admin/login');
+      } else {
+        setUser(session.user);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [router]);
 
   // ─── Load data ──────────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     try {
-      const [pRes, sRes, mRes] = await Promise.all([
-        api.get('/projects'),
-        api.get('/skills'),
-        api.get('/contact'),
+      const [pRes, sRes, mRes, qRes] = await Promise.all([
+        supabase.from('projects').select('*').order('sort_order').order('created_at', { ascending: false }),
+        supabase.from('skills').select('*').order('sort_order'),
+        supabase.from('messages').select('*').order('created_at', { ascending: false }),
+        supabase.from('quotes').select('*').order('created_at', { ascending: false }),
       ]);
-      setProjects(Array.isArray(pRes.data) ? pRes.data : pRes.data?.data || []);
-      setSkills(Array.isArray(sRes.data) ? sRes.data : sRes.data?.data || []);
-      setMessages(Array.isArray(mRes.data) ? mRes.data : mRes.data?.data || []);
+      setProjects(pRes.data || []);
+      setSkills(sRes.data || []);
+      setMessages(mRes.data || []);
+      setQuotes(qRes.data || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -81,12 +98,13 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    if (user) loadData();
+  }, [user, loadData]);
 
   // ─── Logout ─────────────────────────────────────────────────────────────────
   const handleLogout = async () => {
-    try { await api.post('/auth/logout'); } catch {}
-    localStorage.removeItem('token');
+    await supabase.auth.signOut();
     router.push('/admin/login');
   };
 
@@ -105,11 +123,11 @@ export default function AdminDashboard() {
     { key: 'projects', label: 'Projects', icon: FolderOpen, count: projects.length },
     { key: 'skills', label: 'Skills', icon: Wrench, count: skills.length },
     { key: 'messages', label: 'Messages', icon: MessageSquare, count: messages.length },
+    { key: 'quotes', label: 'Quotes', icon: FileQuestion, count: quotes.length },
   ];
 
   return (
     <div className="min-h-screen bg-[#0a0804]">
-      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-white/5 bg-[#0a0804]/95 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -118,7 +136,7 @@ export default function AdminDashboard() {
             </div>
             <div>
               <p className="text-white font-semibold text-sm">Dashboard</p>
-              {admin && <p className="text-stone-600 text-xs">{admin.name}</p>}
+              {user && <p className="text-stone-600 text-xs">{user.email}</p>}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -141,7 +159,7 @@ export default function AdminDashboard() {
 
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-4 gap-4 mb-8">
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -168,9 +186,7 @@ export default function AdminDashboard() {
               key={t.key}
               onClick={() => setActiveTab(t.key)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === t.key
-                  ? 'bg-amber-600 text-white shadow-lg'
-                  : 'text-stone-400 hover:text-white'
+                activeTab === t.key ? 'bg-amber-600 text-white shadow-lg' : 'text-stone-400 hover:text-white'
               }`}
             >
               <t.icon size={14} />
@@ -196,7 +212,8 @@ export default function AdminDashboard() {
             onDelete={(id) => setDeleteModal({ open: true, type: 'skill', id })}
           />
         )}
-        {activeTab === 'messages' && <MessagesTab messages={messages} />}
+        {activeTab === 'messages' && <MessagesTab messages={messages} onRefresh={loadData} />}
+        {activeTab === 'quotes' && <QuotesTab quotes={quotes} />}
       </div>
 
       {/* Modals */}
@@ -206,23 +223,38 @@ export default function AdminDashboard() {
           saving={saving}
           error={formError}
           onClose={() => { setProjectModal({ open: false, editing: null }); setFormError(''); }}
-          onSave={async (formData) => {
+          onSave={async (form, imageFile) => {
             setSaving(true);
             setFormError('');
             try {
-              if (projectModal.editing) {
-                await api.post(`/projects/${projectModal.editing.id}`, formData, {
-                  headers: { 'Content-Type': 'multipart/form-data' },
-                });
-              } else {
-                await api.post('/projects', formData, {
-                  headers: { 'Content-Type': 'multipart/form-data' },
-                });
+              let image_url = projectModal.editing?.image_url || null;
+
+              // Upload image to Supabase Storage if provided
+              if (imageFile) {
+                const ext = imageFile.name.split('.').pop();
+                const path = `projects/${Date.now()}.${ext}`;
+                const { error: uploadError } = await supabase.storage
+                  .from('portfolio')
+                  .upload(path, imageFile, { upsert: true });
+                if (uploadError) throw uploadError;
+                const { data: urlData } = supabase.storage.from('portfolio').getPublicUrl(path);
+                image_url = urlData.publicUrl;
               }
+
+              const payload = { ...form, image_url };
+
+              if (projectModal.editing) {
+                const { error } = await supabase.from('projects').update(payload).eq('id', projectModal.editing.id);
+                if (error) throw error;
+              } else {
+                const { error } = await supabase.from('projects').insert([payload]);
+                if (error) throw error;
+              }
+
               await loadData();
               setProjectModal({ open: false, editing: null });
             } catch (e: any) {
-              setFormError(e?.response?.data?.message || 'Failed to save project.');
+              setFormError(e?.message || 'Failed to save project.');
             } finally {
               setSaving(false);
             }
@@ -241,14 +273,16 @@ export default function AdminDashboard() {
             setFormError('');
             try {
               if (skillModal.editing) {
-                await api.put(`/skills/${skillModal.editing.id}`, data);
+                const { error } = await supabase.from('skills').update(data).eq('id', skillModal.editing.id);
+                if (error) throw error;
               } else {
-                await api.post('/skills', data);
+                const { error } = await supabase.from('skills').insert([data]);
+                if (error) throw error;
               }
               await loadData();
               setSkillModal({ open: false, editing: null });
             } catch (e: any) {
-              setFormError(e?.response?.data?.message || 'Failed to save skill.');
+              setFormError(e?.message || 'Failed to save skill.');
             } finally {
               setSaving(false);
             }
@@ -263,9 +297,9 @@ export default function AdminDashboard() {
           onConfirm={async () => {
             try {
               if (deleteModal.type === 'project') {
-                await api.delete(`/projects/${deleteModal.id}`);
+                await supabase.from('projects').delete().eq('id', deleteModal.id);
               } else {
-                await api.delete(`/skills/${deleteModal.id}`);
+                await supabase.from('skills').delete().eq('id', deleteModal.id);
               }
               await loadData();
             } catch {}
@@ -282,16 +316,13 @@ function ProjectsTab({ projects, onAdd, onEdit, onDelete }: {
   projects: Project[];
   onAdd: () => void;
   onEdit: (p: Project) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: string) => void;
 }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-white font-semibold">Projects ({projects.length})</h2>
-        <button
-          onClick={onAdd}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium transition-colors"
-        >
+        <button onClick={onAdd} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium transition-colors">
           <Plus size={14} /> Add Project
         </button>
       </div>
@@ -301,49 +332,32 @@ function ProjectsTab({ projects, onAdd, onEdit, onDelete }: {
       ) : (
         <div className="space-y-3">
           {projects.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center gap-4 p-4 rounded-xl border border-white/5 bg-white/2 hover:border-white/10 transition-colors"
-            >
-              {p.image_url && (
+            <div key={p.id} className="flex items-center gap-4 p-4 rounded-xl border border-white/5 bg-white/2 hover:border-white/10 transition-colors">
+              {p.image_url ? (
                 <img src={p.image_url} alt={p.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-              )}
-              {!p.image_url && (
+              ) : (
                 <div className="w-12 h-12 rounded-lg bg-stone-800 flex items-center justify-center flex-shrink-0">
                   <FolderOpen size={16} className="text-stone-600" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-white font-medium text-sm truncate">{p.title}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-white font-medium text-sm truncate">{p.title}</p>
+                  {p.featured && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-600/20 text-amber-400 border border-amber-600/20 flex-shrink-0">featured</span>
+                  )}
+                </div>
                 {p.stack && <p className="text-amber-600 font-mono text-xs truncate">{p.stack}</p>}
                 <p className="text-stone-600 text-xs truncate mt-0.5">{p.summary}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {p.website && (
-                  <a
-                    href={p.website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 text-stone-500 hover:text-stone-300 transition-colors"
-                    title="View live"
-                  >
+                  <a href={p.website} target="_blank" rel="noopener noreferrer" className="p-1.5 text-stone-500 hover:text-stone-300 transition-colors">
                     <Eye size={14} />
                   </a>
                 )}
-                <button
-                  onClick={() => onEdit(p)}
-                  className="p-1.5 text-stone-500 hover:text-amber-400 transition-colors"
-                  title="Edit"
-                >
-                  <Edit size={14} />
-                </button>
-                <button
-                  onClick={() => onDelete(p.id)}
-                  className="p-1.5 text-stone-500 hover:text-red-400 transition-colors"
-                  title="Delete"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <button onClick={() => onEdit(p)} className="p-1.5 text-stone-500 hover:text-amber-400 transition-colors"><Edit size={14} /></button>
+                <button onClick={() => onDelete(p.id)} className="p-1.5 text-stone-500 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
               </div>
             </div>
           ))}
@@ -358,7 +372,7 @@ function SkillsTab({ skills, onAdd, onEdit, onDelete }: {
   skills: Skill[];
   onAdd: () => void;
   onEdit: (s: Skill) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: string) => void;
 }) {
   const grouped = skills.reduce((acc, s) => {
     const cat = s.category || 'Other';
@@ -371,10 +385,7 @@ function SkillsTab({ skills, onAdd, onEdit, onDelete }: {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-white font-semibold">Skills ({skills.length})</h2>
-        <button
-          onClick={onAdd}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium transition-colors"
-        >
+        <button onClick={onAdd} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium transition-colors">
           <Plus size={14} /> Add Skill
         </button>
       </div>
@@ -388,35 +399,11 @@ function SkillsTab({ skills, onAdd, onEdit, onDelete }: {
               <p className="text-stone-500 text-xs uppercase tracking-widest font-mono mb-3">{category}</p>
               <div className="space-y-2">
                 {items.map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center gap-4 p-3 rounded-xl border border-white/5 bg-white/2 hover:border-white/10 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-stone-200 text-sm font-medium">{s.name}</p>
-                        <span className="text-amber-500 font-mono text-xs">{s.level}%</span>
-                      </div>
-                      <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all"
-                          style={{ width: `${s.level}%` }}
-                        />
-                      </div>
-                    </div>
+                  <div key={s.id} className="flex items-center gap-4 p-3 rounded-xl border border-white/5 bg-white/2 hover:border-white/10 transition-colors">
+                    <p className="text-stone-200 text-sm font-medium flex-1">{s.name}</p>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={() => onEdit(s)}
-                        className="p-1.5 text-stone-500 hover:text-amber-400 transition-colors"
-                      >
-                        <Edit size={13} />
-                      </button>
-                      <button
-                        onClick={() => onDelete(s.id)}
-                        className="p-1.5 text-stone-500 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <button onClick={() => onEdit(s)} className="p-1.5 text-stone-500 hover:text-amber-400 transition-colors"><Edit size={13} /></button>
+                      <button onClick={() => onDelete(s.id)} className="p-1.5 text-stone-500 hover:text-red-400 transition-colors"><Trash2 size={13} /></button>
                     </div>
                   </div>
                 ))}
@@ -430,8 +417,13 @@ function SkillsTab({ skills, onAdd, onEdit, onDelete }: {
 }
 
 // ─── Messages Tab ─────────────────────────────────────────────────────────────
-function MessagesTab({ messages }: { messages: ContactMessage[] }) {
-  const [expanded, setExpanded] = useState<number | null>(null);
+function MessagesTab({ messages, onRefresh }: { messages: Message[]; onRefresh: () => void }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const markRead = async (id: string) => {
+    await supabase.from('messages').update({ read: true }).eq('id', id);
+    onRefresh();
+  };
 
   return (
     <div>
@@ -444,41 +436,97 @@ function MessagesTab({ messages }: { messages: ContactMessage[] }) {
       ) : (
         <div className="space-y-3">
           {messages.map((m) => (
-            <div
-              key={m.id}
-              className="rounded-xl border border-white/5 bg-white/2 overflow-hidden"
-            >
+            <div key={m.id} className={`rounded-xl border overflow-hidden ${m.read ? 'border-white/5 bg-white/2' : 'border-amber-600/15 bg-amber-600/3'}`}>
               <button
                 className="w-full flex items-center gap-4 p-4 text-left hover:bg-white/3 transition-colors"
-                onClick={() => setExpanded(expanded === m.id ? null : m.id)}
+                onClick={() => {
+                  setExpanded(expanded === m.id ? null : m.id);
+                  if (!m.read) markRead(m.id);
+                }}
               >
                 <div className="w-9 h-9 rounded-full bg-amber-600/15 border border-amber-600/20 flex items-center justify-center flex-shrink-0">
-                  <span className="text-amber-500 text-xs font-bold uppercase">
-                    {m.name.charAt(0)}
-                  </span>
+                  <span className="text-amber-500 text-xs font-bold uppercase">{m.name.charAt(0)}</span>
                 </div>
                 <div className="flex-1 min-w-0 text-left">
-                  <p className="text-stone-200 text-sm font-medium">{m.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-stone-200 text-sm font-medium">{m.name}</p>
+                    {!m.read && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
+                  </div>
                   <p className="text-stone-500 text-xs truncate">{m.email}</p>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <span className="text-stone-600 text-xs hidden sm:block">
                     {new Date(m.created_at).toLocaleDateString()}
                   </span>
-                  {expanded === m.id ? (
-                    <ChevronUp size={14} className="text-stone-500" />
-                  ) : (
-                    <ChevronDown size={14} className="text-stone-500" />
-                  )}
+                  {expanded === m.id ? <ChevronUp size={14} className="text-stone-500" /> : <ChevronDown size={14} className="text-stone-500" />}
                 </div>
               </button>
               {expanded === m.id && (
                 <div className="px-4 pb-4 pt-0 border-t border-white/5">
                   <p className="text-stone-400 text-sm leading-relaxed mt-3">{m.message}</p>
-                  <a
-                    href={`mailto:${m.email}?subject=Re: Your message`}
-                    className="inline-flex items-center gap-1.5 mt-4 text-amber-500 hover:text-amber-400 text-xs font-medium transition-colors"
-                  >
+                  <a href={`mailto:${m.email}?subject=Re: Your message`} className="inline-flex items-center gap-1.5 mt-4 text-amber-500 hover:text-amber-400 text-xs font-medium transition-colors">
+                    Reply via Email →
+                  </a>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Quotes Tab ───────────────────────────────────────────────────────────────
+function QuotesTab({ quotes }: { quotes: Quote[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const statusColors: Record<string, string> = {
+    new: 'bg-amber-600/15 text-amber-400 border-amber-600/20',
+    reviewed: 'bg-blue-600/15 text-blue-400 border-blue-600/20',
+    accepted: 'bg-green-600/15 text-green-400 border-green-600/20',
+    declined: 'bg-red-600/15 text-red-400 border-red-600/20',
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-white font-semibold">Quote Requests ({quotes.length})</h2>
+      </div>
+
+      {quotes.length === 0 ? (
+        <EmptyState icon={FileQuestion} message="No quote requests yet." />
+      ) : (
+        <div className="space-y-3">
+          {quotes.map((q) => (
+            <div key={q.id} className="rounded-xl border border-white/5 bg-white/2 overflow-hidden">
+              <button
+                className="w-full flex items-center gap-4 p-4 text-left hover:bg-white/3 transition-colors"
+                onClick={() => setExpanded(expanded === q.id ? null : q.id)}
+              >
+                <div className="w-9 h-9 rounded-full bg-amber-600/15 border border-amber-600/20 flex items-center justify-center flex-shrink-0">
+                  <span className="text-amber-500 text-xs font-bold uppercase">{q.name.charAt(0)}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-stone-200 text-sm font-medium">{q.name}</p>
+                  <p className="text-stone-500 text-xs truncate">{q.email}{q.company ? ` · ${q.company}` : ''}</p>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono border ${statusColors[q.status] || statusColors.new}`}>
+                    {q.status}
+                  </span>
+                  <span className="text-stone-600 text-xs hidden sm:block">{new Date(q.created_at).toLocaleDateString()}</span>
+                  {expanded === q.id ? <ChevronUp size={14} className="text-stone-500" /> : <ChevronDown size={14} className="text-stone-500" />}
+                </div>
+              </button>
+              {expanded === q.id && (
+                <div className="px-4 pb-4 pt-0 border-t border-white/5 space-y-3">
+                  <div className="flex flex-wrap gap-3 mt-3">
+                    <span className="px-2.5 py-1 rounded-full text-xs font-mono border border-white/10 text-stone-400">{q.project_type}</span>
+                    {q.timeline && <span className="px-2.5 py-1 rounded-full text-xs font-mono border border-white/10 text-stone-400">{q.timeline}</span>}
+                  </div>
+                  <p className="text-stone-400 text-sm leading-relaxed">{q.message}</p>
+                  <a href={`mailto:${q.email}?subject=Re: Your quote request`} className="inline-flex items-center gap-1.5 text-amber-500 hover:text-amber-400 text-xs font-medium transition-colors">
                     Reply via Email →
                   </a>
                 </div>
@@ -497,39 +545,32 @@ function ProjectModal({ editing, saving, error, onClose, onSave }: {
   saving: boolean;
   error: string;
   onClose: () => void;
-  onSave: (fd: FormData) => void;
+  onSave: (form: Omit<ProjectForm, 'image'>, imageFile: File | null) => void;
 }) {
-  const [form, setForm] = useState<ProjectForm>({
+  const [form, setForm] = useState({
     title: editing?.title || '',
     summary: editing?.summary || '',
     description: editing?.description || '',
     stack: editing?.stack || '',
     github: editing?.github || '',
     website: editing?.website || '',
-    image: null,
+    featured: editing?.featured || false,
+    sort_order: editing?.sort_order || 0,
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(editing?.image_url || null);
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setForm({ ...form, image: file });
+      setImageFile(file);
       setPreview(URL.createObjectURL(file));
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const fd = new FormData();
-    Object.entries(form).forEach(([k, v]) => {
-      if (v !== null && v !== undefined) fd.append(k, v as any);
-    });
-    onSave(fd);
-  };
-
   return (
     <Modal title={editing ? 'Edit Project' : 'New Project'} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); onSave(form, imageFile); }} className="space-y-4">
         {error && <p className="text-red-400 text-xs p-3 rounded-lg bg-red-900/10 border border-red-500/20">{error}</p>}
 
         <div className="grid sm:grid-cols-2 gap-4">
@@ -564,11 +605,24 @@ function ProjectModal({ editing, saving, error, onClose, onSave }: {
           </Field>
         </div>
 
-        {/* Image */}
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Sort Order">
+            <input type="number" value={form.sort_order} onChange={e => setForm({ ...form, sort_order: +e.target.value })}
+              className={inputCls} min={0} />
+          </Field>
+          <Field label="Featured">
+            <label className="flex items-center gap-3 h-10 cursor-pointer">
+              <input type="checkbox" checked={form.featured} onChange={e => setForm({ ...form, featured: e.target.checked })}
+                className="w-4 h-4 accent-amber-500" />
+              <span className="text-stone-400 text-sm">Show as featured project</span>
+            </label>
+          </Field>
+        </div>
+
         <Field label="Project Image">
           <label className="flex items-center gap-3 p-3 rounded-xl border border-white/8 border-dashed bg-white/2 hover:border-amber-600/30 cursor-pointer transition-colors">
             <Upload size={14} className="text-stone-500 flex-shrink-0" />
-            <span className="text-stone-500 text-xs">{form.image ? form.image.name : 'Click to upload image'}</span>
+            <span className="text-stone-500 text-xs">{imageFile ? imageFile.name : 'Click to upload image'}</span>
             <input type="file" accept="image/*" className="hidden" onChange={handleImage} />
           </label>
           {preview && (
@@ -604,7 +658,7 @@ function SkillModal({ editing, saving, error, onClose, onSave }: {
   const [form, setForm] = useState<SkillForm>({
     name: editing?.name || '',
     category: editing?.category || '',
-    level: editing?.level ?? 80,
+    sort_order: editing?.sort_order || 0,
   });
 
   const categories = ['Frontend', 'Backend', 'Database', 'DevOps', 'Mobile', 'Other'];
@@ -627,16 +681,9 @@ function SkillModal({ editing, saving, error, onClose, onSave }: {
           </select>
         </Field>
 
-        <Field label={`Proficiency Level — ${form.level}%`}>
-          <input
-            type="range" min={0} max={100} value={form.level}
-            onChange={e => setForm({ ...form, level: +e.target.value })}
-            className="w-full accent-amber-500"
-          />
-          <div className="h-1.5 bg-white/5 rounded-full mt-2 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all"
-              style={{ width: `${form.level}%` }} />
-          </div>
+        <Field label="Sort Order">
+          <input type="number" value={form.sort_order} onChange={e => setForm({ ...form, sort_order: +e.target.value })}
+            className={inputCls} min={0} />
         </Field>
 
         <div className="flex gap-3 pt-2">
@@ -654,7 +701,7 @@ function SkillModal({ editing, saving, error, onClose, onSave }: {
   );
 }
 
-// ─── Delete Confirm Modal ─────────────────────────────────────────────────────
+// ─── Delete Modal ─────────────────────────────────────────────────────────────
 function DeleteModal({ type, onCancel, onConfirm }: {
   type: 'project' | 'skill';
   onCancel: () => void;
@@ -666,14 +713,8 @@ function DeleteModal({ type, onCancel, onConfirm }: {
         Are you sure you want to delete this {type}? This action cannot be undone.
       </p>
       <div className="flex gap-3">
-        <button onClick={onCancel}
-          className="flex-1 py-2.5 rounded-xl border border-white/8 text-stone-400 hover:text-white text-sm transition-colors">
-          Cancel
-        </button>
-        <button onClick={onConfirm}
-          className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors">
-          Delete
-        </button>
+        <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-white/8 text-stone-400 hover:text-white text-sm transition-colors">Cancel</button>
+        <button onClick={onConfirm} className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors">Delete</button>
       </div>
     </Modal>
   );
@@ -713,5 +754,3 @@ function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message:
     </div>
   );
 }
-
-const inputCls = "w-full px-3.5 py-2.5 rounded-xl bg-white/3 border border-white/8 text-white placeholder-stone-700 focus:outline-none focus:border-amber-600/50 focus:bg-white/5 transition-all text-sm";

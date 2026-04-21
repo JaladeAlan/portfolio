@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
-import api from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -18,19 +18,16 @@ export default function AdminLoginPage() {
     setError('');
 
     try {
-      const res = await api.post('/auth/login', form);
-      const token = res.data?.data?.token || res.data?.token || res.data?.access_token;
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.password,
+      });
 
-      if (token) {
-        localStorage.setItem('token', token);
-        router.push('/admin/dashboard');
-      } else {
-        setError('Login succeeded but no token received.');
-      }
+      if (authError) throw authError;
+
+      router.push('/admin/dashboard');
     } catch (err: any) {
-      setError(
-        err?.response?.data?.message || 'Invalid credentials. Please try again.'
-      );
+      setError(err?.message || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -38,11 +35,9 @@ export default function AdminLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-[#0a0804]">
-      {/* Background glow */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_50%,rgba(217,119,6,0.06),transparent)]" />
 
       <div className="relative w-full max-w-sm">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <div className="w-9 h-9 rounded-lg border border-amber-600/40 flex items-center justify-center bg-amber-600/10">
@@ -55,11 +50,8 @@ export default function AdminLoginPage() {
           <h1 className="text-stone-400 text-sm">Admin Dashboard</h1>
         </div>
 
-        {/* Card */}
         <div className="p-8 rounded-2xl border border-white/8 bg-white/2 backdrop-blur-sm">
-          <h2 className="font-display text-xl font-bold text-white mb-6 text-center">
-            Welcome back
-          </h2>
+          <h2 className="font-display text-xl font-bold text-white mb-6 text-center">Welcome back</h2>
 
           {error && (
             <div className="flex items-start gap-2.5 p-3.5 rounded-xl border border-red-500/20 bg-red-900/10 mb-5">
@@ -119,10 +111,7 @@ export default function AdminLoginPage() {
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <>
-                  <LogIn size={15} />
-                  Sign In
-                </>
+                <><LogIn size={15} /> Sign In</>
               )}
             </button>
           </form>

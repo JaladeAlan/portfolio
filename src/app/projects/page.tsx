@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Github, ExternalLink, Code2, ArrowRight } from 'lucide-react';
-import { Project } from '@/types';
+import { createClient } from '@supabase/supabase-js';
+import type { Project } from '@/lib/supabase';
 
 export const metadata: Metadata = {
   title: 'Projects',
@@ -15,13 +16,19 @@ export const metadata: Metadata = {
 
 async function getProjects(): Promise<Project[]> {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/projects`,
-      { next: { revalidate: 60 } }
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
+
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+    return data;
   } catch {
     return [];
   }
@@ -32,7 +39,6 @@ export default async function ProjectsPage() {
 
   return (
     <>
-      {/* Header */}
       <section className="pt-32 pb-16 px-6 border-b border-white/5">
         <div className="max-w-5xl mx-auto">
           <p className="text-amber-500 font-mono text-xs uppercase tracking-widest mb-4">Portfolio</p>
@@ -45,7 +51,6 @@ export default async function ProjectsPage() {
         </div>
       </section>
 
-      {/* Projects Grid */}
       <section className="py-16 px-6">
         <div className="max-w-5xl mx-auto">
           {projects.length === 0 ? (
@@ -63,7 +68,6 @@ export default async function ProjectsPage() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="py-16 px-6 border-t border-white/5">
         <div className="max-w-5xl mx-auto text-center">
           <p className="text-stone-500 mb-4">Interested in working together?</p>
@@ -80,15 +84,12 @@ export default async function ProjectsPage() {
 }
 
 function ProjectCard({ project }: { project: Project }) {
-  const imageUrl = project.image_url || null;
-
   return (
     <article className="group flex flex-col rounded-xl border border-white/5 bg-white/2 overflow-hidden hover:border-amber-600/25 transition-all duration-300 card-hover">
-      {/* Image */}
       <Link href={`/projects/${project.id}`} className="block relative h-48 bg-stone-900 overflow-hidden">
-        {imageUrl ? (
+        {project.image_url ? (
           <Image
-            src={imageUrl}
+            src={project.image_url}
             alt={project.title}
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-500"
@@ -101,7 +102,6 @@ function ProjectCard({ project }: { project: Project }) {
         )}
       </Link>
 
-      {/* Content */}
       <div className="p-5 flex flex-col flex-1">
         {project.stack && (
           <p className="text-amber-600 font-mono text-xs mb-2 truncate">{project.stack}</p>
@@ -117,7 +117,6 @@ function ProjectCard({ project }: { project: Project }) {
           {project.summary}
         </p>
 
-        {/* Actions */}
         <div className="mt-5 pt-4 border-t border-white/5 flex flex-wrap items-center gap-2">
           {project.github && (
             <a
@@ -125,7 +124,6 @@ function ProjectCard({ project }: { project: Project }) {
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/8 text-stone-400 hover:text-white hover:border-white/15 text-xs font-medium transition-colors"
-              aria-label={`View ${project.title} on GitHub`}
             >
               <Github size={12} /> Code
             </a>
@@ -136,7 +134,6 @@ function ProjectCard({ project }: { project: Project }) {
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/8 text-stone-400 hover:text-white hover:border-white/15 text-xs font-medium transition-colors"
-              aria-label={`View ${project.title} live`}
             >
               <ExternalLink size={12} /> Live
             </a>
