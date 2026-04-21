@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
   timeout: 10000,
 });
 
@@ -13,6 +13,12 @@ api.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
   }
+
+  if (!(config.data instanceof FormData)) {
+    config.headers['Content-Type'] = 'application/json';
+    config.headers['Accept'] = 'application/json';
+  }
+
   return config;
 });
 
